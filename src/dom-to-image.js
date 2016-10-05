@@ -36,7 +36,7 @@
      * @param {Number} options.height - height to be applied to node before rendering.
      * @param {Object} options.style - an object whose properties to be copied to node's style before rendering.
      * @param {Number} options.quality - a Number between 0 and 1 indicating image quality (applicable to JPEG only),
-                defaults to 1.0.
+     defaults to 1.0.
      * @return {Promise} - A promise that is fulfilled with a SVG image data URL
      * */
     function toSvg(node, options) {
@@ -61,10 +61,11 @@
             if (options.width) clone.style.width = options.width + 'px';
             if (options.height) clone.style.height = options.height + 'px';
 
-            if (options.style)
-                Object.keys(options.style).forEach(function (property) {
-                    clone.style[property] = options.style[property];
-                });
+            if (options.style) {
+                for (var key in options.style) {
+                    clone.style[key] = options.style[key];
+                }
+            }
 
             return clone;
         }
@@ -220,9 +221,8 @@
             }
 
             function clonePseudoElements() {
-                [':before', ':after'].forEach(function (element) {
-                    clonePseudoElement(element);
-                });
+                clonePseudoElement(':before');
+                clonePseudoElement(':after');
 
                 function clonePseudoElement(element) {
                     var style = window.getComputedStyle(original, element);
@@ -247,10 +247,8 @@
                         }
 
                         function formatCssProperties(style) {
-
                             return util.asArray(style)
-                                .map(formatProperty)
-                                .join('; ') + ';';
+                                    .joinMap(formatProperty, '; ') + ';';
 
                             function formatProperty(name) {
                                 return name + ': ' +
@@ -492,10 +490,7 @@
         }
 
         function asArray(arrayLike) {
-            var array = [];
-            var length = arrayLike.length;
-            for (var i = 0; i < length; i++) array.push(arrayLike[i]);
-            return array;
+            return iterator(arrayLike);
         }
 
         function escapeXhtml(string) {
@@ -688,14 +683,18 @@
 
             return inlineBackground(node)
                 .then(function () {
-                    if (node instanceof HTMLImageElement)
+                    if (node instanceof HTMLImageElement) {
                         return newImage(node).inline();
-                    else
+                    }
+                    else {
                         return Promise.all(
-                            util.asArray(node.childNodes).map(function (child) {
-                                return inlineAll(child);
-                            })
+                            util.asArray(node.childNodes)
+                                .map(function (child) {
+                                    return inlineAll(child);
+                                })
+                                .tap()
                         );
+                    }
                 });
 
             function inlineBackground(node) {
@@ -716,5 +715,69 @@
                     });
             }
         }
+    }
+
+    /**
+     * A custom iterator wrapper to assist in iterating over DOM elements without needlessly creating arrays.
+     * The collection passed to the iterator will be used as is and will be iterated through
+     * using basic for-loops. In special cases, a new array will be generated and will be wrapped in the iterator.
+     * @param collection
+     * @returns {Object}
+     */
+    function iterator(collection) {
+        var length = collection.length;
+        var it = {
+            map: function (fn) {
+                var result = new Array(length);
+                for (var i = 0; i < length; ++i) {
+                    result[i] = fn(collection[i], i);
+                }
+                return iterator(result);
+            },
+            joinMap: function (fn, joinstr) {
+                var str = joinstr || ',';
+                var result = '';
+                for (var i = 0; i < length - 1; ++i) {
+                    result += fn(collection[i], i) + str;
+                }
+                return result + fn(collection[i], i);
+            },
+            filter: function (fn) {
+                var result = [];
+                for (var i = 0; i < length; ++i) {
+                    if (fn(collection[i], i) === true) {
+                        result.push(collection[i]);
+                    }
+                }
+                return iterator(result);
+            },
+            forEach: function (fn) {
+                for (var i = 0; i < length; ++i) {
+                    fn(collection[i], i);
+                }
+
+                return it;
+            },
+            join: function (joinstr) {
+                var str = joinstr || ',';
+                var result = '';
+                for (var i = 0; i < length - 1; ++i) {
+                    result += collection[i] + str;
+                }
+                return result + collection[i];
+            },
+            tap: function () {
+                return collection;
+            },
+            toArray: function () {
+                var result = new Array(length);
+                for (var i = 0; i < length; ++i) {
+                    result[i] = collection[i];
+                }
+                return result;
+            }
+        };
+
+        return it;
     }
 })(this);
